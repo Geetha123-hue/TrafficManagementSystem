@@ -1,5 +1,32 @@
 import { Request, Response } from 'express';
 
+// Traffic-related keywords for validation
+const TRAFFIC_KEYWORDS = [
+  'traffic', 'congestion', 'violation', 'infraction', 'queue', 'wait', 'vehicle', 'car',
+  'speed', 'km/h', 'mph', 'signal', 'phase', 'intersection', 'road', 'street', 'lane',
+  'detection', 'tracking', 'monitoring', 'ai', 'analysis', 'optimization', 'pedestrian',
+  'bus', 'truck', 'motorcycle', 'accident', 'incident', 'flow', 'throughput', 'density',
+  'peak', 'hour', 'commute', 'rush', 'red light', 'stop line', 'cross', 'crossing'
+];
+
+// Check if message is traffic-related
+const isTrafficRelated = (message: string): boolean => {
+  const lowerMessage = message.toLowerCase();
+  
+  // Greeting and help keywords are allowed
+  if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || 
+      lowerMessage.includes('help') || lowerMessage.includes('feature') ||
+      lowerMessage.includes('how') || lowerMessage.includes('what') ||
+      lowerMessage.includes('can you')) {
+    // Check if combined with traffic keywords
+    return TRAFFIC_KEYWORDS.some(keyword => lowerMessage.includes(keyword)) ||
+           lowerMessage.includes('help') || lowerMessage.includes('feature');
+  }
+  
+  // Check if message contains any traffic-related keyword
+  return TRAFFIC_KEYWORDS.some(keyword => lowerMessage.includes(keyword));
+};
+
 // Simple AI responses based on traffic-related queries
 const generateChatResponse = (message: string): string => {
   const lowerMessage = message.toLowerCase();
@@ -21,7 +48,7 @@ const generateChatResponse = (message: string): string => {
     return 'We track all vehicles in real-time with AI-powered detection. Our system identifies vehicle types, counts, speeds, and can detect anomalies. The Vehicle Tracking tab shows live tracking data.';
   }
   
-  if (lowerMessage.includes('speed') || lowerMessage.includes('km/h')) {
+  if (lowerMessage.includes('speed') || lowerMessage.includes('km/h') || lowerMessage.includes('mph')) {
     return 'Current average speed across intersections is displayed on the dashboard. Our AI adjusts signal timing to maintain optimal flow while ensuring safety.';
   }
   
@@ -45,8 +72,8 @@ const generateChatResponse = (message: string): string => {
     return 'TrafficAI uses computer vision, machine learning, and real-time data processing to monitor intersections. Our AI learns traffic patterns and predicts congestion, then optimizes signal timing automatically.';
   }
   
-  // Default response
-  return 'That\'s a great question! I\'m still learning about that topic. Feel free to ask me about traffic management, violations, vehicle tracking, queue analysis, or how our AI system works.';
+  // Default traffic-related response
+  return 'That\'s a great traffic-related question! I can help you with traffic management, violations, vehicle tracking, queue analysis, intersection optimization, or how our AI system works. What would you like to know?';
 };
 
 export const sendMessage = async (req: Request, res: Response): Promise<void> => {
@@ -55,6 +82,16 @@ export const sendMessage = async (req: Request, res: Response): Promise<void> =>
     
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message is required and must be a string' });
+      return;
+    }
+
+    // Check if message is traffic-related
+    if (!isTrafficRelated(message)) {
+      res.json({
+        success: false,
+        message: 'I can only help with traffic-related questions. Please ask me about traffic management, violations, vehicle tracking, queue analysis, signal optimization, or how our AI system works.',
+        timestamp: new Date().toISOString(),
+      });
       return;
     }
 

@@ -1,10 +1,12 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, X, Play, Loader, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import GlassPanel from '@/components/ui/GlassPanel';
+import { videoService } from '@/services/videoService';
+import { useVideo } from '@/contexts/VideoContext';
 
-interface UploadedVideo {
+interface LocalUploadVideo {
   id: string;
   name: string;
   size: number;
@@ -13,6 +15,7 @@ interface UploadedVideo {
   status: 'uploading' | 'processing' | 'completed' | 'error';
   error?: string;
   preview?: string;
+  fileData?: Blob;
 }
 
 interface VideoUploadModuleProps {
@@ -20,74 +23,116 @@ interface VideoUploadModuleProps {
 }
 
 export default function VideoUploadModule({ onVideoSelected }: VideoUploadModuleProps) {
-  const [videos, setVideos] = useState<UploadedVideo[]>([]);
+  const [videos, setVideos] = useState<LocalUploadVideo[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { uploadedVideos, addVideo, setCurrentVideo } = useVideo();
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
   };
 
+  // Load previously uploaded videos from context
+  useEffect(() => {
+    if (uploadedVideos.length > 0) {
+      const contextVideos: LocalUploadVideo[] = uploadedVideos.map(v => ({
+        id: v.id,
+        name: v.name,
+        size: v.size,
+        duration: v.duration,
+        progress: 100,
+        status: v.status as LocalUploadVideo['status'],
+        error: v.error,
+        preview: v.preview,
+        uploadedAt: v.uploadedAt,
+      }));
+      setVideos(prev => {
+        // Avoid duplicates
+        const existingIds = new Set(prev.map(v => v.id));
+        const newVideos = contextVideos.filter(v => !existingIds.has(v.id));
+        return [...prev, ...newVideos];
+      });
+    }
+  }, [uploadedVideos]);
+
   const handleDragLeave = () => {
     setIsDragging(false);
   };
 
-  const processVideo = (file: File) => {
-    const videoId = Date.now().toString();
-    const newVideo: UploadedVideo = {
-      id: videoId,
+  const processVideo = async (file: File) => {
+    const tempVideoId = Date.now().toString();
+    const newVideo: LocalUploadVideo = {
+      id: tempVideoId,
       name: file.name,
       size: file.size,
       progress: 0,
       status: 'uploading',
+      fileData: file,
     };
 
     setVideos(prev => [...prev, newVideo]);
 
-    // Simulate upload progress
-    let progress = 0;
-    const uploadInterval = setInterval(() => {
-      progress += Math.random() * 30;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(uploadInterval);
+    try {
+      // Use the actual video service for upload
+      const response = await videoService.uploadVideo(file);
 
-        // Simulate processing
+      if (response.success && response.videoId) {
+        // Update with real video ID and change status
         setVideos(prev =>
           prev.map(v =>
-            v.id === videoId
-              ? { ...v, progress: 100, status: 'processing' }
+            v.id === tempVideoId
+              ? { ...v, id: response.videoId!, progress: 100, status: 'processing' }
               : v
           )
         );
 
-        // Simulate completion
+        // Simulate processing delay for UI feedback
         setTimeout(() => {
+          const completedVideo: LocalUploadVideo = {
+            id: response.videoId!,
+            name: file.name,
+            size: file.size,
+            status: 'completed',
+            duration: Math.floor(Math.random() * 300) + 60,
+            progress: 100,
+            fileData: file,
+            uploadedAt: new Date().toISOString(),
+          };
+          
           setVideos(prev =>
             prev.map(v =>
-              v.id === videoId
-                ? { ...v, status: 'completed', duration: Math.floor(Math.random() * 300) + 60 }
+              v.id === response.videoId
+                ? completedVideo
                 : v
             )
           );
+          
+          // Add to global context for persistence
+          addVideo(completedVideo);
+          setCurrentVideo(completedVideo);
+          
           // Trigger callback with the file
           onVideoSelected?.(file);
         }, 2000);
       } else {
-        setVideos(prev =>
-          prev.map(v =>
-            v.id === videoId ? { ...v, progress: Math.min(99, progress) } : v
-          )
-        );
+        throw new Error(response.message || 'Upload failed');
       }
-    }, 500);
+    } catch (error: any) {
+      setVideos(prev =>
+        prev.map(v =>
+          v.id === tempVideoId
+            ? { ...v, status: 'error', error: error.message || 'Upload failed' }
+            : v
+        )
+      );
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = Array.from(e.dataTransfer.files).filter(file =>
       file.type.startsWith('video/')
     );
@@ -139,11 +184,10 @@ export default function VideoUploadModule({ onVideoSelected }: VideoUploadModule
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         whileHover={{ scale: 1.01 }}
-        className={`relative border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer ${
-          isDragging
-            ? 'border-primary bg-primary/10 scale-105'
-            : 'border-border bg-background/50 hover:border-primary/50'
-        }`}
+        className={`relative border-2 border-dashed rounded-xl p-8 transition-all cursor-pointer ${isDragging
+          ? 'border-primary bg-primary/10 scale-105'
+          : 'border-border bg-background/50 hover:border-primary/50'
+          }`}
       >
         <input
           ref={fileInputRef}
@@ -257,26 +301,24 @@ export default function VideoUploadModule({ onVideoSelected }: VideoUploadModule
                         <motion.div
                           initial={{ width: 0 }}
                           animate={{ width: `${video.progress}%` }}
-                          className={`h-full rounded-full ${
-                            video.status === 'uploading'
-                              ? 'bg-gradient-to-r from-blue-500 to-cyan-500'
-                              : 'bg-gradient-to-r from-yellow-500 to-orange-500'
-                          }`}
+                          className={`h-full rounded-full ${video.status === 'uploading'
+                            ? 'bg-gradient-to-r from-blue-500 to-cyan-500'
+                            : 'bg-gradient-to-r from-yellow-500 to-orange-500'
+                            }`}
                         />
                       </div>
                     )}
 
                     {/* Status Label */}
                     <div className="mt-2">
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                        video.status === 'uploading'
-                          ? 'bg-blue-500/20 text-blue-500'
-                          : video.status === 'processing'
+                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${video.status === 'uploading'
+                        ? 'bg-blue-500/20 text-blue-500'
+                        : video.status === 'processing'
                           ? 'bg-yellow-500/20 text-yellow-500'
                           : video.status === 'completed'
-                          ? 'bg-green-500/20 text-green-500'
-                          : 'bg-red-500/20 text-red-500'
-                      }`}>
+                            ? 'bg-green-500/20 text-green-500'
+                            : 'bg-red-500/20 text-red-500'
+                        }`}>
                         {video.status.charAt(0).toUpperCase() + video.status.slice(1)}
                       </span>
                     </div>

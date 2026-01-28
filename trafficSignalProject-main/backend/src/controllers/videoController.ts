@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import path from 'path';
+import fs from 'fs';
 
 interface UploadResponse {
   success: boolean;
@@ -9,28 +11,54 @@ interface UploadResponse {
   processingStatus?: string;
 }
 
+// In-memory store for video metadata (would be a DB in production)
+const videoMetadataStore = new Map<string, any>();
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+
+// Ensure uploads directory exists
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
 // Handle video upload
 export const uploadVideo = (req: Request, res: Response): void => {
   try {
-    // In a real application, you would:
-    // 1. Use multer or similar middleware to handle file uploads
-    // 2. Store files in a dedicated storage service (S3, GCS, etc.)
-    // 3. Queue the video for processing
-    // 4. Run computer vision and AI analysis on the video
-    
-    const videoId = Date.now().toString();
-    
+    if (!req.file) {
+      res.status(400).json({
+        success: false,
+        message: 'No video file provided'
+      });
+      return;
+    }
+
+    const { filename, originalname, size } = req.file;
+    const videoId = path.parse(filename).name;
+
+    // Store metadata
+    const metadata = {
+      id: videoId,
+      fileName: originalname,
+      storedName: filename,
+      fileSize: size,
+      uploadDate: new Date().toISOString(),
+      status: 'completed', // For now, we mark as completed since processing is simulated
+      processingStatus: 'completed'
+    };
+
+    videoMetadataStore.set(videoId, metadata);
+
     const response: UploadResponse = {
       success: true,
-      message: 'Video upload initiated successfully',
+      message: 'Video uploaded successfully',
       videoId: videoId,
-      fileName: 'traffic_video.mp4',
-      fileSize: 104857600, // 100MB example
-      processingStatus: 'queued'
+      fileName: originalname,
+      fileSize: size,
+      processingStatus: 'completed'
     };
-    
+
     res.json(response);
   } catch (error) {
+    console.error('Upload error:', error);
     res.status(500).json({
       success: false,
       message: 'Error uploading video'
@@ -42,16 +70,22 @@ export const uploadVideo = (req: Request, res: Response): void => {
 export const getUploadStatus = (req: Request, res: Response): void => {
   try {
     const { videoId } = req.params;
-    
-    const statuses = ['queued', 'processing', 'analyzing', 'completed'];
-    const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-    
+    const metadata = videoMetadataStore.get(videoId);
+
+    if (!metadata) {
+      res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+      return;
+    }
+
     res.json({
       success: true,
       videoId: videoId,
-      status: randomStatus,
-      progress: Math.floor(Math.random() * 100),
-      message: `Video is currently ${randomStatus}`
+      status: metadata.status,
+      progress: 100,
+      message: `Video processing is ${metadata.status}`
     });
   } catch (error) {
     res.status(500).json({
@@ -65,15 +99,24 @@ export const getUploadStatus = (req: Request, res: Response): void => {
 export const getAnalysisResults = (req: Request, res: Response): void => {
   try {
     const { videoId } = req.params;
-    
+    const metadata = videoMetadataStore.get(videoId);
+
+    if (!metadata) {
+      res.status(404).json({
+        success: false,
+        message: 'Video not found'
+      });
+      return;
+    }
+
     res.json({
       success: true,
       videoId: videoId,
       analysis: {
         totalFrames: 1800,
         duration: '60s',
-        vehiclesDetected: 245,
-        violationsDetected: 12,
+        vehiclesDetected: Math.floor(Math.random() * 300) + 100,
+        violationsDetected: Math.floor(Math.random() * 20),
         averageSpeed: 42,
         peakCongestion: 78,
         signalOptimizationSuggestion: 'Extend green phase for north-south direction by 5 seconds'
@@ -90,23 +133,23 @@ export const getAnalysisResults = (req: Request, res: Response): void => {
 // Get all uploaded videos
 export const getUploadedVideos = (req: Request, res: Response): void => {
   try {
+    const videos = Array.from(videoMetadataStore.values()).map(meta => ({
+      id: meta.id,
+      fileName: meta.fileName,
+      uploadDate: meta.uploadDate,
+      status: meta.status,
+      duration: 300, // Simulated
+      fileSize: meta.fileSize,
+      analysis: {
+        vehiclesDetected: Math.floor(Math.random() * 300) + 100,
+        violationsDetected: Math.floor(Math.random() * 15)
+      }
+    }));
+
     res.json({
       success: true,
-      videos: [
-        {
-          id: '1704067200000',
-          fileName: 'intersection_a_morning.mp4',
-          uploadDate: new Date(Date.now() - 3600000).toISOString(),
-          status: 'completed',
-          duration: 300,
-          fileSize: 52428800,
-          analysis: {
-            vehiclesDetected: 456,
-            violationsDetected: 8
-          }
-        }
-      ],
-      total: 1
+      videos: videos,
+      total: videos.length
     });
   } catch (error) {
     res.status(500).json({

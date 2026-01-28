@@ -13,7 +13,7 @@ export default function Chatbot({ isOpen = true, onClose }: ChatbotProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      text: 'Hello! I\'m TrafficAI Assistant. How can I help you today?',
+      text: 'Hello! I\'m TrafficAI Assistant. I specialize in traffic management questions. Ask me about traffic monitoring, violations, vehicle tracking, queue analysis, or signal optimization!',
       sender: 'bot',
       timestamp: new Date(),
     },
@@ -51,7 +51,7 @@ export default function Chatbot({ isOpen = true, onClose }: ChatbotProps) {
       // Send to backend
       const response = await chatService.sendMessage(input);
       
-      // Add bot response
+      // Add bot response - handle both successful and non-traffic responses
       const botMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         text: response.message,
@@ -62,6 +62,14 @@ export default function Chatbot({ isOpen = true, onClose }: ChatbotProps) {
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
       console.error('Error sending message:', error);
+      // Add error message
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        text: 'Sorry, I encountered an error. I only respond to traffic-related queries. Please ask me about traffic management, violations, vehicle tracking, or signal optimization.',
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -86,7 +94,7 @@ export default function Chatbot({ isOpen = true, onClose }: ChatbotProps) {
               </div>
               <div>
                 <h3 className="font-bold text-sm">TrafficAI Assistant</h3>
-                <p className="text-xs text-muted-foreground">Always here to help</p>
+                <p className="text-xs text-muted-foreground">Traffic queries only</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -168,7 +176,7 @@ export default function Chatbot({ isOpen = true, onClose }: ChatbotProps) {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask me anything..."
+                placeholder="Ask about traffic..."
                 disabled={isLoading}
                 className="flex-1 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-foreground placeholder-muted-foreground focus:outline-none focus:border-primary/50 disabled:opacity-50 text-sm"
               />

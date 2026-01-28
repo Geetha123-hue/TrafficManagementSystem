@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, BarChart3, AlertTriangle, Zap, MapPin } from 'lucide-react';
+import { ChevronLeft, BarChart3, AlertTriangle, Zap, MapPin, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import GlassPanel from '@/components/ui/GlassPanel';
 import VideoUploadModule from './VideoUploadModule';
@@ -9,6 +9,8 @@ import DetectionResults from './DetectionResults';
 import ObjectTracking from './ObjectTracking';
 import TrafficViolationDetection from './TrafficViolationDetection';
 import ROIEditor, { ROIData } from './ROIEditor';
+import { useVideo } from '@/contexts/VideoContext';
+import { useEffect } from 'react';
 
 type AnalysisTab = 'upload' | 'roi' | 'processing' | 'detection' | 'tracking' | 'violations';
 
@@ -59,17 +61,129 @@ const TABS: TabConfig[] = [
 ];
 
 export default function VideoAnalyticsDashboard() {
-  const [activeTab, setActiveTab] = useState<AnalysisTab>('upload');
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [activeTab, setActiveTab] = useState<AnalysisTab>('processing');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(new File(['demo'], 'demo-traffic.mp4', { type: 'video/mp4' }));
+  const [isUploadValid, setIsUploadValid] = useState(true);
   const [analysisResults, setAnalysisResults] = useState<AnalysisResults | null>(null);
-  const [roiData, setROIData] = useState<ROIData | null>(null);
-  const [completedSteps, setCompletedSteps] = useState<Set<AnalysisTab>>(new Set());
+  const [roiData, setROIData] = useState<ROIData | null>({
+    queueRegion: [[100, 200], [300, 200], [300, 400], [100, 400]],
+    stopLine: [[100, 200], [300, 200]],
+  });
+  const [completedSteps, setCompletedSteps] = useState<Set<AnalysisTab>>(new Set(['upload', 'roi']));
+  const { currentVideo, uploadedVideos, removeVideo } = useVideo();
+
+  // Load demo analysis results on component mount
+  useEffect(() => {
+    const generateDemoResults = (): AnalysisResults => {
+      const fps = 30;
+      const duration = 30;
+      const totalFrames = Math.floor(duration * fps);
+      
+      // Generate mock detections
+      const detectionResults = Array.from({ length: Math.min(50, totalFrames) }).map((_, i) => {
+        const frameNum = i * 10;
+        return {
+          frameNumber: frameNum,
+          timestamp: frameNum / fps,
+          detections: Array.from({ length: Math.floor(Math.random() * 8) + 3 }).map(() => ({
+            id: `det_${Math.random().toString(36).substr(2, 9)}`,
+            class: ['car', 'bike', 'bus', 'truck', 'auto'][Math.floor(Math.random() * 5)],
+            confidence: 0.8 + Math.random() * 0.2,
+            bbox: [
+              Math.random() * 100,
+              Math.random() * 100,
+              50 + Math.random() * 100,
+              50 + Math.random() * 100,
+            ] as [number, number, number, number],
+          })),
+        };
+      });
+
+      // Generate mock tracking results
+      const trackingResults = Array.from({ length: Math.min(50, totalFrames) }).map((_, i) => {
+        const frameNum = i * 10;
+        return {
+          frameNumber: frameNum,
+          timestamp: frameNum / fps,
+          tracks: Array.from({ length: Math.floor(Math.random() * 6) + 2 }).map((_, idx) => ({
+            trackId: `track_${idx}`,
+            class: ['car', 'bike', 'bus'][Math.floor(Math.random() * 3)],
+            bbox: [50 + Math.random() * 100, 50 + Math.random() * 100, 60 + Math.random() * 80, 60 + Math.random() * 80] as [number, number, number, number],
+            trajectory: Array.from({ length: 5 }).map(() => [Math.random() * 200, Math.random() * 200]),
+            velocity: [Math.random() * 10 - 5, Math.random() * 10 - 5] as [number, number],
+          })),
+        };
+      });
+
+      // Generate mock queue metrics
+      const queueMetrics = Array.from({ length: Math.min(50, totalFrames) }).map((_, i) => {
+        const frameNum = i * 10;
+        return {
+          frameNumber: frameNum,
+          timestamp: frameNum / fps,
+          queueLength: Math.floor(5 + Math.random() * 20),
+          queueDensity: 0.4 + Math.random() * 0.4,
+          avgVehicleSpeed: 5 + Math.random() * 25,
+        };
+      });
+
+      // Generate mock violations
+      const violations = Array.from({ length: Math.floor(Math.random() * 5) + 2 }).map((_, i) => ({
+        frameNumber: Math.floor(Math.random() * totalFrames),
+        timestamp: Math.random() * duration,
+        type: ['red-light-jump' as const, 'rash-driving' as const, 'lane-violation' as const][Math.floor(Math.random() * 3)],
+        vehicleId: `vehicle_${Math.floor(Math.random() * 100)}`,
+        confidence: 0.75 + Math.random() * 0.25,
+        description: [
+          'Red-light jump detected with high confidence',
+          'Rash driving detected with high confidence',
+          'Lane violation detected with high confidence',
+        ][Math.floor(Math.random() * 3)],
+      }));
+
+      return {
+        videoId: Date.now().toString(),
+        fileName: 'demo-traffic.mp4',
+        duration,
+        totalFrames,
+        fps,
+        detectionResults,
+        trackingResults,
+        queueMetrics,
+        violations,
+      };
+    };
+
+    // Auto-load demo data
+    const demoResults = generateDemoResults();
+    setAnalysisResults(demoResults);
+    setCompletedSteps(prev => new Set([...prev, 'processing', 'detection', 'tracking', 'violations']));
+  }, []);
 
   const handleVideoUploaded = (file: File) => {
+    // Validate that file exists and is a valid video
+    if (!file || !file.type.startsWith('video/')) {
+      console.error('Invalid file uploaded');
+      return;
+    }
+    
     setUploadedFile(file);
+    setIsUploadValid(true);
     setCompletedSteps(prev => new Set([...prev, 'upload']));
-    setActiveTab('roi');
+    
+    // Auto-navigate to ROI setup
+    setTimeout(() => {
+      setActiveTab('roi');
+    }, 500);
   };
+
+  // Sync with current video from context
+  useEffect(() => {
+    if (currentVideo && uploadedVideos.length > 0) {
+      // Video has been uploaded and persisted
+      setCompletedSteps(prev => new Set([...prev, 'upload']));
+    }
+  }, [currentVideo, uploadedVideos]);
 
   const handleROISet = (roi: ROIData) => {
     setROIData(roi);
@@ -80,7 +194,10 @@ export default function VideoAnalyticsDashboard() {
   const handleAnalysisComplete = (results: AnalysisResults) => {
     setAnalysisResults(results);
     setCompletedSteps(prev => new Set([...prev, 'processing', 'detection', 'tracking', 'violations']));
-    setActiveTab('detection');
+    // Auto-navigate to detection results to show output
+    setTimeout(() => {
+      setActiveTab('detection');
+    }, 500);
   };
 
   const canAccessTab = (tabId: AnalysisTab): boolean => {
@@ -129,6 +246,61 @@ export default function VideoAnalyticsDashboard() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Previously Uploaded Videos */}
+        {uploadedVideos.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8"
+          >
+            <GlassPanel className="border-amber-500/30 bg-amber-500/5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-foreground">Previously Uploaded Videos ({uploadedVideos.length})</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {uploadedVideos.map((video) => (
+                  <motion.div
+                    key={video.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="relative group"
+                  >
+                    <button
+                      onClick={() => {
+                        setUploadedFile(new File([''], video.name, { type: 'video/mp4' }));
+                        setIsUploadValid(true);
+                        setCompletedSteps(prev => new Set([...prev, 'upload', 'roi']));
+                        setActiveTab('processing');
+                      }}
+                      className="w-full p-3 rounded-lg bg-background/50 border border-amber-500/30 hover:border-amber-500/60 transition-all text-left hover:bg-background/70"
+                    >
+                      <p className="font-semibold text-sm text-foreground truncate">{video.name}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Uploaded: {new Date(video.uploadedAt).toLocaleDateString()}
+                      </p>
+                    </button>
+
+                    {/* Delete Button */}
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeVideo(video.id);
+                      }}
+                      className="absolute top-2 right-2 p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/60 transition-all opacity-0 group-hover:opacity-100"
+                      title="Delete video"
+                    >
+                      <Trash2 size={16} className="text-red-500" />
+                    </motion.button>
+                  </motion.div>
+                ))}
+              </div>
+            </GlassPanel>
+          </motion.div>
+        )}
+
         {/* Tab Navigation */}
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-12">
           {TABS.map((tab, index) => {
@@ -190,7 +362,7 @@ export default function VideoAnalyticsDashboard() {
             )}
 
             {/* ROI Tab */}
-            {activeTab === 'roi' && uploadedFile && (
+            {activeTab === 'roi' && uploadedFile && isUploadValid && (
               <div className="space-y-6">
                 <GlassPanel className="border-blue-500/30 bg-blue-500/5">
                   <p className="text-sm text-blue-600">
@@ -206,7 +378,7 @@ export default function VideoAnalyticsDashboard() {
             )}
 
             {/* Processing Tab */}
-            {activeTab === 'processing' && uploadedFile && roiData && (
+            {activeTab === 'processing' && uploadedFile && isUploadValid && roiData && (
               <div className="space-y-6">
                 <GlassPanel className="border-green-500/30 bg-green-500/5">
                   <div className="space-y-2">
@@ -222,11 +394,53 @@ export default function VideoAnalyticsDashboard() {
                   videoFile={uploadedFile}
                   onAnalysisComplete={handleAnalysisComplete}
                 />
+                
+                {/* Quick Results Summary after processing */}
+                {analysisResults && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-4"
+                  >
+                    <GlassPanel className="border-primary/50 bg-primary/5">
+                      <h4 className="font-semibold text-foreground mb-4">Analysis Complete! Quick Summary:</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="p-3 rounded-lg bg-background/50 border border-border">
+                          <p className="text-xs text-muted-foreground">Total Vehicles</p>
+                          <p className="text-xl font-bold text-foreground">
+                            {analysisResults.detectionResults.reduce((sum, r) => sum + r.detections.length, 0)}
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-background/50 border border-border">
+                          <p className="text-xs text-muted-foreground">Tracked Vehicles</p>
+                          <p className="text-xl font-bold text-foreground">
+                            {new Set(analysisResults.trackingResults.flatMap(r => r.tracks.map(t => t.trackId))).size}
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-background/50 border border-border">
+                          <p className="text-xs text-muted-foreground">Avg Queue</p>
+                          <p className="text-xl font-bold text-foreground">
+                            {Math.round(analysisResults.queueMetrics.reduce((sum, m) => sum + m.queueLength, 0) / analysisResults.queueMetrics.length)}
+                          </p>
+                        </div>
+                        <div className="p-3 rounded-lg bg-background/50 border border-border">
+                          <p className="text-xs text-muted-foreground">Violations</p>
+                          <p className="text-xl font-bold text-red-500">
+                            {analysisResults.violations.length}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-primary mt-4">
+                        ✓ Processing complete! Navigate to other tabs to view detailed results.
+                      </p>
+                    </GlassPanel>
+                  </motion.div>
+                )}
               </div>
             )}
 
             {/* Detection Tab */}
-            {activeTab === 'detection' && analysisResults && (
+            {activeTab === 'detection' && analysisResults && isUploadValid && (
               <div className="space-y-6">
                 <GlassPanel className="border-blue-500/30 bg-blue-500/5">
                   <p className="text-sm text-blue-600">
@@ -242,7 +456,7 @@ export default function VideoAnalyticsDashboard() {
             )}
 
             {/* Tracking Tab */}
-            {activeTab === 'tracking' && analysisResults && (
+            {activeTab === 'tracking' && analysisResults && isUploadValid && (
               <div className="space-y-6">
                 <ObjectTracking
                   trackingResults={analysisResults.trackingResults}
@@ -253,7 +467,7 @@ export default function VideoAnalyticsDashboard() {
             )}
 
             {/* Violations Tab */}
-            {activeTab === 'violations' && analysisResults && (
+            {activeTab === 'violations' && analysisResults && isUploadValid && (
               <div className="space-y-6">
                 <TrafficViolationDetection
                   violations={analysisResults.violations}
@@ -264,7 +478,7 @@ export default function VideoAnalyticsDashboard() {
         </AnimatePresence>
 
         {/* Progress Summary */}
-        {uploadedFile && (
+        {uploadedFile && isUploadValid && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}

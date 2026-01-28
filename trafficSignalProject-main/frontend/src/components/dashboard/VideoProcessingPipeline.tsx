@@ -120,21 +120,25 @@ export default function VideoProcessingPipeline({ videoFile, onAnalysisComplete 
     try {
       // Stage 1: Vehicle Detection
       setProcessingStage('detection');
+      console.log('Starting vehicle detection...');
       await simulateDetection();
       setProgress(25);
 
       // Stage 2: Multi-Object Tracking
       setProcessingStage('tracking');
+      console.log('Starting multi-object tracking...');
       await simulateTracking();
       setProgress(50);
 
       // Stage 3: Queue Analysis
       setProcessingStage('queue-analysis');
+      console.log('Starting queue analysis...');
       await simulateQueueAnalysis();
       setProgress(75);
 
       // Stage 4: Violation Detection
       setProcessingStage('violation-detection');
+      console.log('Starting violation detection...');
       await simulateViolationDetection();
       setProgress(100);
 
@@ -153,6 +157,9 @@ export default function VideoProcessingPipeline({ videoFile, onAnalysisComplete 
 
       setAnalysisResults(results);
       setProcessingStage('completed');
+      console.log('Analysis completed successfully!', results);
+      
+      // Call callback to notify parent component
       onAnalysisComplete?.(results);
     } catch (error) {
       console.error('Error processing video:', error);
